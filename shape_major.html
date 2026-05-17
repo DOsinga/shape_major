@@ -28,6 +28,15 @@ files:
     .chunk .picks { color: #444; }
     .chunk .picks span { margin-right: 6px; }
     .chunk .picks span:not(:last-child)::after { content: " · "; color: #aaa; }
+    .tree { margin: 14px 0; padding: 10px 14px; background: #fafafa; border-radius: 6px; border-left: 3px solid #5E5CE6; }
+    .node { padding: 3px 0; }
+    .node-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .node-row .digits { font-family: monospace; font-weight: bold; color: #5E5CE6; min-width: 50px; }
+    .node-row .picks { color: #444; font-size: 14px; }
+    .node-row .picks span:not(:last-child)::after { content: " · "; color: #bbb; margin: 0 2px; }
+    .node.best > .node-row .digits { color: #ff9500; }
+    .node.best > .node-row { font-weight: 500; }
+    .children { margin-left: 10px; padding-left: 14px; border-left: 1px dotted #ccc; }
     .no-match { color: #c00; font-style: italic; }
     .decoded { font-size: 20px; font-family: monospace; }
     .decoded .digit { color: #5E5CE6; font-weight: bold; }
@@ -93,25 +102,77 @@ function findSegmentations(digits) {
     }
     if (minChunks[0] === Infinity) return [];
 
-    // Enumerate all optimal-chunk-count segmentations, capped at MAX_SEGMENTATIONS.
+    // Enumerate segmentations within budget of the optimum, then keep the top
+    // MAX_SEGMENTATIONS by chunk count. We include up to min+2 so a slightly
+    // longer-but-more-natural encoding can compete.
+    const BUDGET = 2;
+    const HARD_CAP = 500;
+    const maxChunks = minChunks[0] + BUDGET;
     const results = [];
-    function reconstruct(pos, current) {
-        if (results.length >= MAX_SEGMENTATIONS) return;
+
+    function enumerate(pos, current) {
+        if (results.length >= HARD_CAP) return;
+        // Prune: even with the optimal completion, can we stay under maxChunks?
+        if (current.length + minChunks[pos] > maxChunks) return;
         if (pos === N) { results.push([...current]); return; }
-        const target = minChunks[pos];
         const maxLen = Math.min(MAX_SEG, N - pos);
         for (let len = MIN_SEG; len <= maxLen; len++) {
             const segment = digits.substring(pos, pos + len);
-            if (wordIndex[segment] && wordIndex[segment].length > 0
-                && 1 + minChunks[pos + len] === target) {
+            if (wordIndex[segment] && wordIndex[segment].length > 0) {
                 current.push(segment);
-                reconstruct(pos + len, current);
+                enumerate(pos + len, current);
                 current.pop();
             }
         }
     }
-    reconstruct(0, []);
-    return results;
+    enumerate(0, []);
+
+    results.sort((a, b) => a.length - b.length);
+    return results.slice(0, MAX_SEGMENTATIONS);
+}
+
+// Group a list of segmentations into a trie of shared prefixes. Each node
+// also caches the shortest path length to a leaf in its subtree, so we can
+// sort children "best-first" and highlight optimal leaves.
+function buildTrie(segs) {
+    const root = { children: {}, minDepth: 0 };
+    for (const seg of segs) {
+        let node = root;
+        for (const chunk of seg) {
+            if (!node.children[chunk]) node.children[chunk] = { children: {}, minDepth: Infinity };
+            node = node.children[chunk];
+        }
+    }
+    function computeDepth(node, d) {
+        if (Object.keys(node.children).length === 0) { node.minDepth = d; return d; }
+        let m = Infinity;
+        for (const c of Object.values(node.children)) m = Math.min(m, computeDepth(c, d + 1));
+        node.minDepth = m;
+        return m;
+    }
+    computeDepth(root, 0);
+    return root;
+}
+
+function renderTree(node, currentDepth, minTotalDepth) {
+    const entries = Object.entries(node.children);
+    entries.sort(([_, a], [__, b]) => a.minDepth - b.minDepth);
+    let html = "";
+    for (const [chunk, child] of entries) {
+        const isLeaf = Object.keys(child.children).length === 0;
+        const isOptimalLeaf = isLeaf && currentDepth + 1 === minTotalDepth;
+        const picks = (wordIndex[chunk] || []).slice(0, 4);
+        const picksHtml = picks.length > 0
+            ? `<span class="picks">${picks.map(w => `<span>${w}</span>`).join("")}</span>`
+            : `<span class="no-match">no match</span>`;
+        html += `<div class="node${isOptimalLeaf ? ' best' : ''}">`;
+        html += `<div class="node-row"><span class="digits">${chunk}</span>${picksHtml}</div>`;
+        if (!isLeaf) {
+            html += `<div class="children">${renderTree(child, currentDepth + 1, minTotalDepth)}</div>`;
+        }
+        html += `</div>`;
+    }
+    return html;
 }
 
 function renderChunk(digits) {
@@ -126,11 +187,12 @@ function renderChunk(digits) {
 
 function renderSegmentations(segs) {
     if (segs.length === 0) return "";
-    let html = `<h3>Encodings (${segs.length})</h3>`;
-    segs.forEach((seg, i) => {
-        const cls = i === 0 ? "seg best" : "seg";
-        html += `<div class="${cls}">${seg.map(renderChunk).join("")}</div>`;
-    });
+    const minLen = segs[0].length;  // results are sorted by length asc
+    const trie = buildTrie(segs);
+    const summary = segs.length === 1 ? '1 encoding' : `${segs.length} encodings`;
+    const bestNote = `best uses ${minLen} word${minLen === 1 ? '' : 's'}`;
+    let html = `<h3>${summary} · ${bestNote}</h3>`;
+    html += `<div class="tree">${renderTree(trie, 0, minLen)}</div>`;
     return html;
 }
 
