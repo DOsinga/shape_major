@@ -1,0 +1,182 @@
+<script type="text/markdown" id="info">
+name: Major System
+description: >
+  A shape-based mnemonic system for memorising numbers — each digit maps to
+  consonants chosen by visual similarity (M rotated is a 3, B is two stacked
+  loops like 8, P is 9 upright). Type a number to encode it as a phrase, or a
+  word to see what number it spells. A spiritual cousin of the 1648 phonetic
+  Major System; see thoughts.md for the differences and history.
+type: hacks
+github: major_system
+files:
+  - [build_buckets.py, "Partition an n-gram CSV into one file per consonant pattern"]
+  - [prepare_curation.py, "Apply a freq floor and split patterns into agent chunks"]
+  - [apply_drops.py, "Apply yes/no agent drop lists to prioritized/"]
+  - [build_index.py, "Combine curated buckets into the word_index.json the app loads"]
+</script>
+
+<style>
+    #ms { font-family: -apple-system, system-ui, sans-serif; max-width: 720px; margin: 0 auto; }
+    #ms input[type=text] { width: 100%; padding: 12px; font-size: 24px; font-family: monospace; border: 2px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+    #ms input[type=text]:focus { border-color: #5E5CE6; outline: none; }
+    .mapping { background: #f7f7f7; padding: 10px 14px; border-radius: 6px; margin: 16px 0; font-size: 13px; line-height: 1.6; }
+    .mapping code { background: #fff; padding: 1px 5px; border-radius: 3px; border: 1px solid #ddd; font-size: 13px; }
+    .seg { margin: 14px 0; padding: 12px 14px; background: #fafafa; border-left: 3px solid #5E5CE6; border-radius: 0 6px 6px 0; }
+    .seg.best { border-left-color: #ff9500; background: #fff9ee; }
+    .chunk { display: inline-block; margin: 2px 6px 2px 0; }
+    .chunk .digits { font-family: monospace; font-weight: bold; color: #5E5CE6; }
+    .chunk .picks { color: #444; }
+    .chunk .picks span { margin-right: 6px; }
+    .chunk .picks span:not(:last-child)::after { content: " · "; color: #aaa; }
+    .no-match { color: #c00; font-style: italic; }
+    .decoded { font-size: 20px; font-family: monospace; }
+    .decoded .digit { color: #5E5CE6; font-weight: bold; }
+    .decoded .skip { color: #aaa; }
+    #status { color: #888; font-style: italic; padding: 8px 0; }
+    h3 { margin: 20px 0 8px; color: #444; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+</style>
+
+<div id="ms">
+    <input type="text" id="input" placeholder="Type a number (1066) or a word (rocket)…" autofocus>
+    <div id="status">Loading…</div>
+    <div id="results"></div>
+
+    <div class="mapping">
+        <strong>Mapping:</strong>
+        <code>0=D/Q/X</code>
+        <code>1=L/V</code>
+        <code>2=N/Z</code>
+        <code>3=M/W</code>
+        <code>4=R/K</code>
+        <code>5=S</code>
+        <code>6=C/F/G</code>
+        <code>7=T</code>
+        <code>8=B/H</code>
+        <code>9=J/P</code>
+        — vowels and Y are skipped.
+    </div>
+</div>
+
+<script>
+const LETTER_TO_DIGIT = {
+    B:8, C:6, D:0, F:6, G:6, H:8, J:9, K:4, L:1,
+    M:3, N:2, P:9, Q:0, R:4, S:5, T:7, V:1, W:3, X:0, Z:2
+};
+const MIN_SEG = 2;
+const MAX_SEG = 6;
+const MAX_SEGMENTATIONS = 8;
+
+let wordIndex = null;
+
+function patternOf(word) {
+    let p = "";
+    for (const ch of word.toUpperCase()) {
+        if (LETTER_TO_DIGIT[ch] !== undefined) p += LETTER_TO_DIGIT[ch];
+    }
+    return p;
+}
+
+function findSegmentations(digits) {
+    const results = [];
+    function go(pos, current) {
+        if (results.length >= MAX_SEGMENTATIONS) return;
+        if (pos === digits.length) {
+            results.push([...current]);
+            return;
+        }
+        const remaining = digits.length - pos;
+        const maxLen = Math.min(MAX_SEG, remaining);
+        for (let len = MIN_SEG; len <= maxLen; len++) {
+            if (results.length >= MAX_SEGMENTATIONS) return;
+            const segment = digits.substring(pos, pos + len);
+            if (wordIndex[segment] && wordIndex[segment].length > 0) {
+                current.push(segment);
+                go(pos + len, current);
+                current.pop();
+            }
+        }
+    }
+    go(0, []);
+    results.sort((a, b) => a.length - b.length);
+    return results;
+}
+
+function renderChunk(digits) {
+    const words = wordIndex[digits] || [];
+    const top = words.slice(0, 5);
+    if (top.length === 0) {
+        return `<span class="chunk"><span class="digits">${digits}</span> <span class="no-match">no match</span></span>`;
+    }
+    const picks = top.map(w => `<span>${w}</span>`).join("");
+    return `<span class="chunk"><span class="digits">${digits}</span> <span class="picks">${picks}</span></span>`;
+}
+
+function renderSegmentations(segs) {
+    if (segs.length === 0) return "";
+    let html = `<h3>Encodings (${segs.length})</h3>`;
+    segs.forEach((seg, i) => {
+        const cls = i === 0 ? "seg best" : "seg";
+        html += `<div class="${cls}">${seg.map(renderChunk).join("")}</div>`;
+    });
+    return html;
+}
+
+function renderWordToDigits(word) {
+    const pattern = patternOf(word);
+    let html = `<h3>Encoding</h3><div class="seg best"><div class="decoded">`;
+    for (const ch of word.toUpperCase()) {
+        const d = LETTER_TO_DIGIT[ch];
+        if (d !== undefined) {
+            html += `<span class="digit">${d}</span>`;
+        } else {
+            html += `<span class="skip">${ch.toLowerCase()}</span>`;
+        }
+    }
+    html += `</div></div>`;
+    if (pattern.length >= MIN_SEG) {
+        const sameBucket = wordIndex[pattern] || [];
+        const others = sameBucket.filter(w => w.toLowerCase() !== word.toLowerCase());
+        if (others.length > 0) {
+            html += `<h3>Other words encoding ${pattern}</h3><div class="seg">${others.slice(0, 8).map(w => `<span class="chunk"><span class="picks"><span>${w}</span></span></span>`).join("")}</div>`;
+        }
+    }
+    return html;
+}
+
+function update() {
+    const raw = document.getElementById("input").value.trim();
+    const out = document.getElementById("results");
+    if (!raw) { out.innerHTML = ""; return; }
+
+    // digits-only? encode mode. else word → digits mode.
+    if (/^\d+$/.test(raw)) {
+        if (raw.length < MIN_SEG) {
+            out.innerHTML = `<p class="no-match">Need at least ${MIN_SEG} digits.</p>`;
+            return;
+        }
+        const segs = findSegmentations(raw);
+        if (segs.length === 0) {
+            out.innerHTML = `<p class="no-match">No encoding found.</p>`;
+        } else {
+            out.innerHTML = renderSegmentations(segs);
+        }
+    } else {
+        out.innerHTML = renderWordToDigits(raw);
+    }
+}
+
+(async function init() {
+    const status = document.getElementById("status");
+    try {
+        const resp = await fetch("{{ static }}word_index.json");
+        wordIndex = await resp.json();
+        const nPatterns = Object.keys(wordIndex).length;
+        status.textContent = `${nPatterns.toLocaleString()} patterns loaded.`;
+        const input = document.getElementById("input");
+        input.addEventListener("input", update);
+        if (input.value) update();
+    } catch (e) {
+        status.textContent = `Error loading index: ${e.message}`;
+    }
+})();
+</script>

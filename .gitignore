@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Intermediate build artifacts — regenerable from build_buckets.py etc.
+buckets/
+prioritized/
+chunks/
+drops/
+
+# The raw n-gram CSV is too big for git — see README for where to get it.
+unigram_freq.csv
+*.csv
