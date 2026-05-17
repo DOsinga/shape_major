@@ -134,4 +134,4 @@ Two practical consequences:
 
 Put differently: a peg-table system is optimised for a regime where you compose mentally and decode mentally. A computer-assisted system is optimised for a regime where you compose once with a search, and decode mentally forever after. The asymmetry favours throwing compute at the encoding side and letting the human side be as simple as possible.
 
-It probably needs its own name to distinguish from the canonical phonetic version. "Shape Major" maybe. Or just claim it as a separate system entirely.
+I'm calling it **Shape Major** to mark the distinction from the canonical phonetic Major System. Same digit-to-consonants conceit, different mapping rationale, different efficiency profile, different design constraints — different enough that a separate name pulls its weight.

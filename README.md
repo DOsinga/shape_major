@@ -1,4 +1,4 @@
-# Major System
+# Shape Major
 
 A shape-based mnemonic system for memorising numbers. Each digit maps to a set
 of consonants chosen for visual similarity (3 = M because M rotated 90° is a
@@ -8,7 +8,7 @@ phrase; type a word, see what number it encodes.
 This differs from the canonical phonetic Major System (~1648) — see
 `thoughts.md` for the history, design rationale, and trade-offs.
 
-## [Live demo](https://douwe.com/projects/major_system)
+## [Live demo](https://douwe.com/projects/shape_major)
 
 ## Mapping
 
@@ -30,7 +30,7 @@ Vowels and Y are skipped. Doubled consonants both count (`Mississippi` =
 
 ## Files
 
-- `major_system.html` — the live page (input + JS that loads the index and
+- `shape_major.html` — the live page (input + JS that loads the index and
   searches for segmentations)
 - `static/word_index.json` — 795 KB index: `{pattern: [word, word, ...]}` for
   28,827 patterns covering lengths 2–6
