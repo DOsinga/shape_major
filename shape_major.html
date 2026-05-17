@@ -77,27 +77,40 @@ function patternOf(word) {
 }
 
 function findSegmentations(digits) {
-    const results = [];
-    function go(pos, current) {
-        if (results.length >= MAX_SEGMENTATIONS) return;
-        if (pos === digits.length) {
-            results.push([...current]);
-            return;
-        }
-        const remaining = digits.length - pos;
-        const maxLen = Math.min(MAX_SEG, remaining);
+    const N = digits.length;
+    // DP: minChunks[i] = fewest chunks needed to encode digits[i..N], or Infinity.
+    const minChunks = new Array(N + 1).fill(Infinity);
+    minChunks[N] = 0;
+    for (let pos = N - 1; pos >= 0; pos--) {
+        const maxLen = Math.min(MAX_SEG, N - pos);
         for (let len = MIN_SEG; len <= maxLen; len++) {
-            if (results.length >= MAX_SEGMENTATIONS) return;
             const segment = digits.substring(pos, pos + len);
             if (wordIndex[segment] && wordIndex[segment].length > 0) {
+                const cost = 1 + minChunks[pos + len];
+                if (cost < minChunks[pos]) minChunks[pos] = cost;
+            }
+        }
+    }
+    if (minChunks[0] === Infinity) return [];
+
+    // Enumerate all optimal-chunk-count segmentations, capped at MAX_SEGMENTATIONS.
+    const results = [];
+    function reconstruct(pos, current) {
+        if (results.length >= MAX_SEGMENTATIONS) return;
+        if (pos === N) { results.push([...current]); return; }
+        const target = minChunks[pos];
+        const maxLen = Math.min(MAX_SEG, N - pos);
+        for (let len = MIN_SEG; len <= maxLen; len++) {
+            const segment = digits.substring(pos, pos + len);
+            if (wordIndex[segment] && wordIndex[segment].length > 0
+                && 1 + minChunks[pos + len] === target) {
                 current.push(segment);
-                go(pos + len, current);
+                reconstruct(pos + len, current);
                 current.pop();
             }
         }
     }
-    go(0, []);
-    results.sort((a, b) => a.length - b.length);
+    reconstruct(0, []);
     return results;
 }
 
