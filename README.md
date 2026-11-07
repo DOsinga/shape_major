@@ -10,6 +10,12 @@ This differs from the canonical phonetic Major System (~1648) — see
 
 ## [Live demo](https://douwe.com/projects/shape_major)
 
+## Run locally
+
+```bash
+uvx douwe shape_major
+```
+
 ## Mapping
 
 | Digit | Letters | Why |
